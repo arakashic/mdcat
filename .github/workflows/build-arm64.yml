@@ -1,0 +1,43 @@
+name: Build Linux ARM64 binary
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Source commit or tag to build
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - run: sudo apt-get update && sudo apt-get install -y asciidoctor
+      - run: asciidoctor -b manpage -a reproducible mdcat.1.adoc
+      - run: cargo build --locked --target aarch64-unknown-linux-gnu --release
+      - run: |
+          strip target/aarch64-unknown-linux-gnu/release/mdcat
+          file target/aarch64-unknown-linux-gnu/release/mdcat
+          target/aarch64-unknown-linux-gnu/release/mdcat --version
+          target/aarch64-unknown-linux-gnu/release/mdcat sample/common-mark.md
+          ldd target/aarch64-unknown-linux-gnu/release/mdcat
+      - id: package
+        run: |
+          version=$(cargo pkgid | cut -d'#' -f2 | cut -d: -f2)
+          ./scripts/package "$version" aarch64-unknown-linux-gnu
+      - run: b2sum *.tar.gz > B2SUMS.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: |
+            ${{ steps.package.outputs.file }}
+            B2SUMS.txt
